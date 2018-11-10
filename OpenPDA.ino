@@ -13,6 +13,7 @@
 #define WHITE    0xFFFF
 #define GREY1    0xAD55
 #define GREY2    0x52AA
+#define GREY3    0xDF5D
 
 // These are 'flexible' lines that can be changed
 #define TFT_CS 21
@@ -62,7 +63,7 @@ void loop() {
 
 int numPgms = 2;
 char* pgmNames[] = {"Storage","Network"};
-int   pgmIcons[] = {0,1};
+int   pgmIcons[] = {2,1};
 void drawHome(){
   if(screenDirty){
     tft.fillScreen(0);
@@ -71,6 +72,7 @@ void drawHome(){
   // draw background
   //  (none yet)
   // draw icons
+  tft.setTextSize(3);
   for(int i=0;i<numPgms;i++){
     drawIcon(10, i*(ICONSIZE+10)+5, pgmIcons[i]);
     tft.setCursor(20+ICONSIZE, i*(ICONSIZE+10) + 10);
@@ -81,10 +83,25 @@ void drawIcon(int x, int y, int id){
   if(id==0){ // hard disk icon
     tft.drawRect(x,y+5,50,40,CYAN);
     tft.fillCircle(x+19,y+24, 18, GREY1);
-    tft.drawLine(x+23, y+29, x+48, y+42, GREY2);
-  }else if(id==1){
-    tft.drawLine(x+25, y+10, x+25, y+49, RED);
-    tft.
+    tft.fillCircle(x+19,y+24, 3, GREY2);
+    tft.fillTriangle(x+23, y+29, x+48, y+42, x+48, y+38, GREY2);
+  }else if(id==1){ // wireless/network icon 1
+    for(int i=3;i>0;i--){
+      tft.drawCircle(x+25, y+10, i*2+2, RED);
+    }
+    tft.fillRect(x+10, y+10, 40, 25, 0);
+    tft.fillCircle(x+25, y+10, 2, RED);
+    
+    tft.drawLine(x+25, y+10, x+25, y+50, RED);
+    tft.drawLine(x, y+50, x+50, y+50, RED);
+  }else if(id==2){ // floppy disk icon
+    tft.fillRect(x,y+10,45,40, GREY2);
+    tft.fillRect(x+10,y,35,50, GREY2);
+    tft.fillTriangle(x, y+10, x+10, y, x+10, y+10, GREY2);
+    tft.fillRect(x+15,y,10,10,GREY1);
+    tft.drawRect(x+25,y,7,10,GREY1);
+    tft.fillRect(x+32,y,3,10,GREY1);
+    tft.fillRect(x+12,y+25,26,25, GREY3);
   }
 }
 TSPoint getPoint(){
