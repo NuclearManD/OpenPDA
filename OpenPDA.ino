@@ -35,14 +35,18 @@
 Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 TouchScreen ts = TouchScreen(XP, YP, XM, YM, 262);
 
-TaskHandle_t guiPgm;
-
 boolean redraw = false;
 boolean screenDirty = false;
 int state = -1;
 
 void setup() {
   Serial.begin(115200);
+  
+  ledcSetup(1, 40000, 8);
+  ledcAttachPin(32, 1);
+  
+  setBrightness(30);
+  
   analogReadResolution(10);
   analogSetSamples(1024);
   analogSetAttenuation(ADC_11db);
@@ -51,7 +55,7 @@ void setup() {
   tft.fillScreen(0);
   tft.setRotation(1);
 
-  mkTask(guiProcessFunc, "GUI Receiver", &guiPgm, 8192);
+  //mkTask(guiProcessFunc, "GUI Receiver", &guiPgm, 8192);
 
   redraw = true;
   state  = -1;
@@ -60,10 +64,21 @@ void setup() {
 #define STATE_HOME 0
 #define STATE_STORAGE 1
 #define STATE_NETWORK 2
+#define STATE_SETTINGS 3
 
 int numStorageDevices = 0;
-
+long idleTime;
 void loop() {
+  if(idleTime<millis()){
+    ledcWrite(1, 0);
+    while(true){
+      delay(20);
+      if(getPoint().z!=0)break;
+    }
+    setBrightness(getBrightness());
+    delay(100);
+    idleTime=millis()+180*1000; // three minutes
+  }
   if(redraw){
     if(state==STATE_LOCKED){
       state=STATE_HOME;
@@ -93,11 +108,16 @@ void loop() {
       tft.print("[networking disabled]");
       
       tft.setCursor(250, 35);
-
+      tft.print("Error: networking unavailable.");//"Scanning for networks...");
+      /*
       WiFi.mode(WIFI_STA);
       WiFi.disconnect();
-      delay(200);
+      delay(100);
       int numNetworks = WiFi.scanNetworks();
+      delay(20);
+      
+      tft.setCursor(250, 35);
+      tft.fillRect(250,35,100,30, RED);
       
       if(numNetworks==0){
         tft.print("No APs!");
@@ -110,60 +130,83 @@ void loop() {
         }
       }
       WiFi.mode(WIFI_OFF);
-      //btStop();
+      btStop();
+      delay(100);
+      */
       
       tft.fillRect(30,150,60,20, WHITE);
       tft.setTextColor(RED);
       tft.setCursor(32,155);
       tft.print("HOME");
+    }else if(state==STATE_SETTINGS){
+      tft.setTextColor(WHITE);
+      tft.fillRoundRect(15,15,tft.width()-45,180,5,GREY2);
+      
+      tft.setCursor(35,35);
+      tft.setTextSize(2);
+      tft.print("Brightness");
 
-      vTaskResume(guiPgm);
+      tft.drawLine(40,70,105,70,WHITE);
+      tft.drawLine(getBrightness()+40,60,getBrightness()+40,80,WHITE);
+      
+      tft.fillRect(30,150,60,20, WHITE);
+      tft.setTextColor(GREY2);
+      tft.setCursor(32,155);
+      tft.print("HOME");
     }
     redraw = false;
   }else{
     delay(20);
   }
-}
-
-void guiProcessFunc(void*){
-  while(true){
-    delay(20);
-    TSPoint p;
-    if((p=getPoint()).z==0)continue;
-    Serial.print(p.x);
-    Serial.print(" ");
-    Serial.println(p.y);
-    if(state==STATE_HOME){
-      if(p.x<170){
-        redraw=true;
-        if(p.y<60){ // storage selected
-          state=STATE_STORAGE;
-        }else if(p.y<110){ // network selected
-          state=STATE_NETWORK;
-        }
-      }
-    }else if(state==STATE_STORAGE){
-      if((p.x>30)&&(p.y>150)&&(p.x<90)&&(p.y<170)){
-        state=STATE_HOME;
-        redraw=true;
-        screenDirty=true;
-      }
-    }else if(state==STATE_NETWORK){
-      if((p.x>30)&&(p.y>150)&&(p.x<90)&&(p.y<170)){
-        state=STATE_HOME;
-        redraw=true;
-        screenDirty=true;
+  TSPoint p;
+  if((p=getPoint()).z==0)return;
+  idleTime=millis()+180*1000; // three minutes
+  Serial.print(p.x);
+  Serial.print(" ");
+  Serial.println(p.y);
+  if(state==STATE_HOME){
+    if(p.x<170){
+      redraw=true;
+      if(p.y<60){ // storage selected
+        state=STATE_STORAGE;
+      }else if(p.y<110){ // network selected
+        state=STATE_NETWORK;
+      }else if(p.y<170){ // network selected
+        state=STATE_SETTINGS;
       }
     }
-    delay(80);
+  }else if(state==STATE_STORAGE){
+    if((p.x>30)&&(p.y>150)&&(p.x<90)&&(p.y<170)){
+      state=STATE_HOME;
+      redraw=true;
+      screenDirty=true;
+    }
+  }else if(state==STATE_NETWORK){
+    if((p.x>30)&&(p.y>150)&&(p.x<90)&&(p.y<170)){
+      state=STATE_HOME;
+      redraw=true;
+      screenDirty=true;
+    }
+  }else if(state==STATE_SETTINGS){
+    if((p.x>30)&&(p.y>150)&&(p.x<90)&&(p.y<170)){
+      state=STATE_HOME;
+      redraw=true;
+      screenDirty=true;
+    }
+    if((p.x>40)&&(p.x<105)&&(p.y>60)&&(p.y<80)){
+      tft.fillRect(40,60,100,21,GREY2);
+      tft.drawLine(40,70,105,70,WHITE);
+      tft.drawLine(getBrightness()+40,60,getBrightness()+40,80,WHITE);
+      setBrightness(p.x-40);
+    }
   }
 }
 
 #define ICONSIZE 50
 
-int numPgms = 2;
-char* pgmNames[] = {"Storage","Network"};
-int   pgmIcons[] = {2,1};
+int numPgms = 3;
+char* pgmNames[] = {"Storage","Network","Settings"};
+int   pgmIcons[] = {2,1,3};
 void drawHome(){
   if(screenDirty){
     tft.fillScreen(0);
@@ -203,6 +246,11 @@ void drawIcon(int x, int y, int id){
     tft.drawRect(x+25,y,7,10,GREY1);
     tft.fillRect(x+32,y,3,10,GREY1);
     tft.fillRect(x+12,y+25,26,25, GREY3);
+  }else if(id==3){
+    tft.fillCircle(x+25,y+25,20,GREY1);
+    tft.fillRect(x+20,y,10,50,GREY1);
+    tft.fillRect(x,y+20,50,10,GREY1);
+    tft.fillCircle(x+25,y+25,4,GREY2);
   }
 }
 TSPoint getPoint(){
@@ -226,5 +274,15 @@ void mkTask(void (*taskFunc)(void*),char* name, TaskHandle_t* taskVar, int stack
    1,                      /* uxPriority */
    taskVar,                 /* pxCreatedTask */
    0);                     /* xCoreID */
+}
+
+int brightness = 100;
+
+int getBrightness(){
+  return brightness-35;
+}
+void setBrightness(int b){
+  brightness=b+35;
+  ledcWrite(1, (brightness*256)/100);
 }
 
