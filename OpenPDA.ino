@@ -1,5 +1,6 @@
 #include <TouchScreen.h>
 #include <SPI.h>
+#include "WiFi.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_HX8357.h"
 
@@ -27,12 +28,14 @@
 
 // This is calibration data for the raw touch data to the screen coordinates
 #define TS_MINX 150
-#define TS_MINY 300
+#define TS_MINY 275
 #define TS_MAXX 920
 #define TS_MAXY 950
 
 Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 TouchScreen ts = TouchScreen(XP, YP, XM, YM, 262);
+
+TaskHandle_t guiPgm;
 
 boolean redraw = false;
 boolean screenDirty = false;
@@ -46,16 +49,111 @@ void setup() {
   tft.begin(HX8357D);
 
   tft.fillScreen(0);
-  tft.setRotation(0);
+  tft.setRotation(1);
+
+  mkTask(guiProcessFunc, "GUI Receiver", &guiPgm, 8192);
 
   redraw = true;
-  state  = 0;
+  state  = -1;
 }
+#define STATE_LOCKED -1
+#define STATE_HOME 0
+#define STATE_STORAGE 1
+#define STATE_NETWORK 2
+
+int numStorageDevices = 0;
 
 void loop() {
   if(redraw){
-    drawHome();
+    if(state==STATE_LOCKED){
+      state=STATE_HOME;
+    }
+    if(state==STATE_HOME){
+      drawHome();
+    }else if(state==STATE_STORAGE){
+      tft.setTextColor(WHITE);
+      tft.fillRoundRect(15,15,tft.width()-45,180,5,BLUE);
+      tft.setCursor(35,35);
+      tft.setTextSize(2);
+      if(numStorageDevices==0){
+        tft.print("No storage devices.");
+      }else{
+        
+      }
+      tft.fillRect(30,150,60,20, WHITE);
+      tft.setTextColor(BLUE);
+      tft.setCursor(32,155);
+      tft.print("HOME");
+    }else if(state==STATE_NETWORK){
+      tft.setTextColor(WHITE);
+      tft.fillRoundRect(15,15,tft.width()-45,180,5,RED);
+      tft.setCursor(35,35);
+      tft.setTextSize(1);
+      
+      tft.print("[networking disabled]");
+      
+      tft.setCursor(250, 35);
+
+      WiFi.mode(WIFI_STA);
+      WiFi.disconnect();
+      delay(200);
+      int numNetworks = WiFi.scanNetworks();
+      
+      if(numNetworks==0){
+        tft.print("No APs!");
+      }else{
+        for(int i=0;i<numNetworks;i++){
+          tft.setCursor(250, 35+i*20);
+          tft.print(WiFi.SSID(i));
+          tft.print(" : ");
+          tft.print(WiFi.RSSI(i));
+        }
+      }
+      WiFi.mode(WIFI_OFF);
+      //btStop();
+      
+      tft.fillRect(30,150,60,20, WHITE);
+      tft.setTextColor(RED);
+      tft.setCursor(32,155);
+      tft.print("HOME");
+    }
     redraw = false;
+  }else{
+    delay(20);
+  }
+}
+
+void guiProcessFunc(void*){
+  while(true){
+    delay(20);
+    TSPoint p;
+    if((p=getPoint()).z==0)continue;
+    Serial.print(p.x);
+    Serial.print(" ");
+    Serial.println(p.y);
+    if(state==STATE_HOME){
+      if(p.x<170){
+        redraw=true;
+        if(p.y<60){ // storage selected
+          state=STATE_STORAGE;
+        }else if(p.y<110){ // network selected
+          state=STATE_NETWORK;
+        }
+      }
+    }else if(state==STATE_STORAGE){
+      if((p.x>30)&&(p.y>150)&&(p.x<90)&&(p.y<170)){
+        state=STATE_HOME;
+        redraw=true;
+        screenDirty=true;
+      }
+    }else if(state==STATE_NETWORK){
+      if((p.x>30)&&(p.y>150)&&(p.x<90)&&(p.y<170)){
+        state=STATE_HOME;
+        redraw=true;
+        screenDirty=true;
+      }
+    }
+    delay(80);
   }
 }
 
@@ -69,6 +167,7 @@ void drawHome(){
     tft.fillScreen(0);
     screenDirty=false;
   }
+  tft.setTextColor(WHITE);
   // draw background
   //  (none yet)
   // draw icons
@@ -106,9 +205,24 @@ void drawIcon(int x, int y, int id){
 }
 TSPoint getPoint(){
   TSPoint p = ts.getPoint();
-  if(p.z<10 || p.z>1000)return *((TSPoint*)0);
-  p.x = map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
-  p.y = map(p.y, TS_MINY, TS_MAXY, 0, tft.height());
+  if(p.z<10 || p.z>1000){
+    p.z=0;
+    return p;
+  }
+  int y=p.y;
+  p.y = tft.height()-map(p.x, TS_MINX, TS_MAXX, 0, tft.height());
+  p.x = map(y, TS_MINY, TS_MAXY, 0, tft.width());
   return p;
+}
+
+void mkTask(void (*taskFunc)(void*),char* name, TaskHandle_t* taskVar, int stack){
+  xTaskCreatePinnedToCore(
+   taskFunc,                  /* pvTaskCode */
+   name,            /* pcName */
+   stack,                   /* usStackDepth */
+   NULL,                   /* pvParameters */
+   1,                      /* uxPriority */
+   taskVar,                 /* pxCreatedTask */
+   0);                     /* xCoreID */
 }
 
