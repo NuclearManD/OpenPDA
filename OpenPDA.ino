@@ -116,6 +116,8 @@ void loop() {
       tft.setTextColor(RED);
       tft.setCursor(32,155);
       tft.print("HOME");
+
+      vTaskResume(guiPgm);
     }
     redraw = false;
   }else{
