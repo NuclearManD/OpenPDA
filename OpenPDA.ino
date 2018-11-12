@@ -20,6 +20,8 @@
 #define TFT_CS 21
 #define TFT_DC 4
 #define TFT_RST 14
+#define SD_CD 36
+#define SD_CS 15
 
 #define YP 33  // must be an analog pin, use "An" notation!
 #define XM 13  // must be an analog pin, use "An" notation!
