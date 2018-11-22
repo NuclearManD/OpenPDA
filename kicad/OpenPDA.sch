@@ -98,6 +98,7 @@ LIBS:nti
 LIBS:regs
 LIBS:vga
 LIBS:ESP32-footprints-Shem-Lib
+LIBS:OpenPDA-cache
 EELAYER 25 0
 EELAYER END
 $Descr A4 11693 8268
@@ -112,15 +113,4 @@ Comment2 ""
 Comment3 ""
 Comment4 ""
 $EndDescr
-$Comp
-L ESP32-WROOM U?
-U 1 1 5BEDF53A
-P 5200 2700
-F 0 "U?" H 4500 3950 60  0000 C CNN
-F 1 "ESP32-WROOM" H 5700 3950 60  0000 C CNN
-F 2 "ESP32-footprints-Lib:ESP32-WROOM" H 5550 4050 60  0001 C CNN
-F 3 "" H 4750 3150 60  0001 C CNN
-	1    5200 2700
-	1    0    0    -1  
-$EndComp
 $EndSCHEMATC
