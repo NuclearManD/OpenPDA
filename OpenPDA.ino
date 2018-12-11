@@ -22,6 +22,7 @@
 #define TFT_RST 14
 #define SD_CD 36
 #define SD_CS 15
+#define BRIGHTNESS_PIN 32
 
 #define YP 33  // must be an analog pin, use "An" notation!
 #define XM 13  // must be an analog pin, use "An" notation!
@@ -43,9 +44,11 @@ int state = -1;
 
 void setup() {
   Serial.begin(115200);
+
+  //SPI.setClockDivider(SPI_CLOCK_DIV128);
   
   ledcSetup(1, 40000, 8);
-  ledcAttachPin(32, 1);
+  ledcAttachPin(BRIGHTNESS_PIN, 1);
   
   setBrightness(30);
   
