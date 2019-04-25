@@ -20,8 +20,6 @@
 #define TFT_CS 21
 #define TFT_DC 4
 #define TFT_RST 14
-#define SD_CD 36
-#define SD_CS 15
 #define BRIGHTNESS_PIN 32
 
 #define YP 33  // must be an analog pin, use "An" notation!
@@ -42,10 +40,12 @@ boolean redraw = false;
 boolean screenDirty = false;
 int state = -1;
 
+long idleTime;
+
 void setup() {
   Serial.begin(115200);
 
-  //SPI.setClockDivider(SPI_CLOCK_DIV128);
+  SPI.setFrequency(8000000);
   
   ledcSetup(1, 40000, 8);
   ledcAttachPin(BRIGHTNESS_PIN, 1);
@@ -64,6 +64,8 @@ void setup() {
 
   redraw = true;
   state  = -1;
+
+  idleTime=millis()+180*1000;
 }
 #define STATE_LOCKED -1
 #define STATE_HOME 0
@@ -72,7 +74,6 @@ void setup() {
 #define STATE_SETTINGS 3
 
 int numStorageDevices = 0;
-long idleTime;
 void loop() {
   if(idleTime<millis()){
     ledcWrite(1, 0);
@@ -290,4 +291,3 @@ void setBrightness(int b){
   brightness=b+35;
   ledcWrite(1, (brightness*256)/100);
 }
-
