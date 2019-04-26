@@ -4,6 +4,11 @@
 #include "Adafruit_GFX.h"
 #include "Adafruit_HX8357.h"
 
+#define LEDC_CHANNEL_0 0
+#define LEDC_CHANNEL_1 1
+
+#include "tv_b_gone.h"
+
 #define BLACK    0x0000
 #define BLUE     0x001F
 #define RED      0xF800
@@ -28,13 +33,13 @@
 #define XP 27   // can be a digital pin
 
 // This is calibration data for the raw touch data to the screen coordinates
-#define TS_MINX 150
-#define TS_MINY 275
-#define TS_MAXX 920
-#define TS_MAXY 950
+#define TS_MINX -2400//-160//
+#define TS_MINY -1970//145//
+#define TS_MAXX 600//1024//
+#define TS_MAXY 770//1023//
 
-Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
-TouchScreen ts = TouchScreen(XP, YP, XM, YM, 262);
+Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, MOSI, SCK, TFT_RST, MISO);
+TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
 
 boolean redraw = false;
 boolean screenDirty = false;
@@ -44,21 +49,35 @@ long idleTime;
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Setting up...");
+
+  pinMode(IRLED, OUTPUT);
 
   SPI.setFrequency(8000000);
   
   ledcSetup(1, 40000, 8);
   ledcAttachPin(BRIGHTNESS_PIN, 1);
   
+  ledcSetup(5, 80, 13);
+  ledcAttachPin(IRLED, 5);
+  
+  Serial.println("LEDC Configured...");
+  
   setBrightness(30);
   
-  analogReadResolution(10);
-  analogSetSamples(1024);
+  analogReadResolution(12);
+  analogSetSamples(65536);
+  analogSetClockDiv(8);
   analogSetAttenuation(ADC_11db);
+  
+  Serial.println("ADC Configured...");
+  
   tft.begin(HX8357D);
 
   tft.fillScreen(0);
   tft.setRotation(1);
+  
+  Serial.println("TFT Configured...");
 
   //mkTask(guiProcessFunc, "GUI Receiver", &guiPgm, 8192);
 
@@ -66,6 +85,7 @@ void setup() {
   state  = -1;
 
   idleTime=millis()+180*1000;
+  Serial.println("Ready!");
 }
 #define STATE_LOCKED -1
 #define STATE_HOME 0
@@ -167,14 +187,19 @@ void loop() {
   TSPoint p;
   if((p=getPoint()).z==0)return;
   idleTime=millis()+180*1000; // three minutes
-  Serial.print(p.x);
+  /*Serial.print(p.x);
   Serial.print(" ");
-  Serial.println(p.y);
+  Serial.println(p.y);//*/
+  tft.drawCircle(p.x,p.y,10,WHITE);
   if(state==STATE_HOME){
     if(p.x<170){
       redraw=true;
       if(p.y<60){ // storage selected
         state=STATE_STORAGE;
+        Serial.println("TV-B-GONE test...");
+        long timer = millis();
+        tv_b_gone();
+        Serial.println(millis()-timer);
       }else if(p.y<110){ // network selected
         state=STATE_NETWORK;
       }else if(p.y<170){ // network selected
@@ -261,13 +286,29 @@ void drawIcon(int x, int y, int id){
 }
 TSPoint getPoint(){
   TSPoint p = ts.getPoint();
-  if(p.z<10 || p.z>1000){
+  if(p.x<TS_MINX||p.y<TS_MINY||p.x>TS_MAXX||p.y>TS_MAXY){
     p.z=0;
     return p;
-  }
+  } //*/
+  /*Serial.print(p.x);
+  Serial.print(" ");
+  Serial.print(p.y);
+  Serial.print(" ");
+  Serial.println(p.z);
+  delay(100);         //*/
   int y=p.y;
   p.y = tft.height()-map(p.x, TS_MINX, TS_MAXX, 0, tft.height());
   p.x = map(y, TS_MINY, TS_MAXY, 0, tft.width());
+  if(p.z==0)p.z=1;
+  if(p.x<0||p.y<0||p.x>tft.width()||p.y>tft.height())p.z=0;
+  else{
+    /*Serial.print(p.x);
+    Serial.print(" ");
+    Serial.print(p.y);
+    Serial.print(" ");
+    Serial.println(p.z);
+    delay(100);         //*/
+  }
   return p;
 }
 
