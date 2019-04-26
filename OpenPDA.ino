@@ -50,11 +50,11 @@ TinyGPS gps;
 String logfile = "";
 
 void println(String s){
-  println(s);
+  Serial.println(s);
   logfile+=s+'\n';
 }
 void print(String s){
-  print(s);
+  Serial.print(s);
   logfile+=s;
 }
 
@@ -209,6 +209,7 @@ void loop() {
       tft.fillScreen(BLACK);
       tft.setTextSize(1);
       tft.setTextColor(GREEN);
+      tft.setCursor(0,0);
       tft.print(logfile);
       delay(200);
       while(true){
@@ -227,6 +228,7 @@ void loop() {
         idleTime=millis()+180*1000; // three minutes
         break;
       }
+      return;
     }
   }
   
