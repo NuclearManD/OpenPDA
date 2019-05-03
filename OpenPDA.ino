@@ -1,7 +1,7 @@
+#include <MicroNMEA.h>
+
 #include <TouchScreen.h>
 #include <SPI.h>
-#include <TinyGPS.h>
-#include "WiFi.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_HX8357.h"
 
@@ -11,6 +11,7 @@
 #define LASER_PIN 22
 
 #include "tv_b_gone.h"
+#include "honker_control.h"
 
 #define BLACK    0x0000
 #define BLUE     0x001F
@@ -45,7 +46,8 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, MOSI, SCK, TFT_RST, MISO);
 TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
 
 long idleTime;
-TinyGPS gps;
+char nmeaBuffer[100];
+MicroNMEA gps(nmeaBuffer, sizeof(nmeaBuffer));
 
 String logfile = "";
 
@@ -59,7 +61,8 @@ void print(String s){
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
+  Serial1.begin(9600);
   println("Setting up...");
   
   tft.begin(HX8357D);
@@ -92,10 +95,12 @@ void setup() {
   println("ADC Configured...");
 
   idleTime=millis()+180*1000;
-  delay(500);
-  tft.fillScreen(WHITE);
   println("Ready!");
 
+  doLogin();
+}
+void doLogin(){
+  tft.fillScreen(WHITE);
   drawIcon(0,0,5);
   // login
   while(true){
@@ -139,6 +144,11 @@ void loop() {
   drawIcon(225,125,6);
   drawIcon(25,125,7);
   tft.drawRect(0,100,100,100,WHITE);
+  tft.setCursor(2,203);
+  tft.setTextSize(2);
+  tft.setTextColor(RED);
+  tft.print("DT UTILS");
+  tft.drawRect(0,200,100,100,WHITE);
   if(laser){
     // fill red triangle for laser at (220, 10)
     tft.fillTriangle(220,10,228, 22, 212, 22, RED);
@@ -148,6 +158,8 @@ void loop() {
   }
 
   while(true){
+    
+    honker_daemon();
     if(idleTime<millis()){
       ledcWrite(1, 0);
       while(true){
@@ -157,23 +169,20 @@ void loop() {
       setBrightness(getBrightness());
       delay(100);
       idleTime=millis()+180*1000; // three minutes
-    }else{
-      // only process GPS if not off/idle
-      while (Serial.available()){
-        char c = Serial.read();
-        // Serial.write(c); // uncomment this line if you want to see the GPS data flowing
-        if (gps.encode(c)){ // Did a new valid sentence come in?
-          int year;
-          byte month, day, hour, minute, second, hundredths;
-          gps.crack_datetime(&year,&month,&day,&hour,&minute,&second,&hundredths);
-          tft.setCursor(225,50);
-          tft.setTextSize(1);
-          tft.setTextColor(WHITE);
-          tft.print(hour);
-          tft.print(':');
-          tft.print(minute);
-        }
-      }
+    }
+    while (Serial1.available()) {
+      char c = Serial1.read();
+      gps.process(c);
+      Serial.write(c);
+    }
+    if(gps.getHour()!=99){
+      tft.fillRect(225,50,64,20, BLACK);
+      tft.setCursor(225,50);
+      tft.setTextSize(1);
+      tft.setTextColor(WHITE);
+      tft.print(gps.getHour());
+      tft.print(':');
+      tft.print(gps.getMinute());
     }
     TSPoint p;
     if((p=getPoint()).z==0)continue;
@@ -184,7 +193,12 @@ void loop() {
       tft.setTextSize(1);
       tft.setTextColor(WHITE);
       tft.print("Running...");
+      println("Running TV-B-Gone...");
+      long timer = millis();
       tv_b_gone();
+      print("Finished in ");
+      print(String(millis()-timer));
+      println("ms");
       return;
     }else if(p.x>100&&p.x<200&&p.y<100){
       laser = !laser;
@@ -199,7 +213,7 @@ void loop() {
         tft.fillTriangle(220,10,228, 22, 212, 22, BLACK);
         tft.drawTriangle(220,10,228, 22, 212, 22, RED);
       }
-      delay(50);
+      delay(150);
     }else if(p.x>100&&p.x<200&&p.y>100&&p.y<200){
       idleTime=0; // turn off the display
       ledcWrite(1, 0);
@@ -211,8 +225,17 @@ void loop() {
       tft.setTextColor(GREEN);
       tft.setCursor(0,0);
       tft.print(logfile);
+      int len = logfile.length();
       delay(200);
       while(true){
+        if(logfile.length()>len){
+          tft.fillScreen(BLACK);
+          tft.setTextSize(1);
+          tft.setTextColor(GREEN);
+          tft.setCursor(0,0);
+          tft.print(logfile);
+          len = logfile.length();
+        }
         if(idleTime<millis()){
           ledcWrite(1, 0);
           while(true){
@@ -229,6 +252,109 @@ void loop() {
         break;
       }
       return;
+    }else if(p.x<100&&p.y>200&&p.y<300){
+      // do a login
+      doLogin();
+      // open prank toolkit
+      tft.fillScreen(BLACK);
+      tft.drawRect(0,0,100,100,WHITE);
+      tft.setCursor(0,2);
+      tft.setTextSize(2);
+      tft.setTextColor(BLUE);
+      tft.print(" BOMB\n PRANK");
+      tft.drawRect(100,0,100,100,WHITE);
+      tft.setCursor(105,5);
+      tft.setTextSize(2);
+      tft.setTextColor(WHITE);
+      tft.print("AUTO HONK");
+      tft.drawRect(100,100,100,100,WHITE);
+      tft.setCursor(125,125);
+      tft.setTextSize(2);
+      tft.setTextColor(WHITE);
+      tft.print("BACK");
+      while(true){
+        honker_daemon();
+        if(idleTime<millis()){
+          ledcWrite(1, 0);
+          while(true){
+            delay(20);
+            if(getPoint().z!=0)break;
+          }
+          setBrightness(getBrightness());
+          delay(100);
+          idleTime=millis()+180*1000; // three minutes
+        }
+        TSPoint p;
+        if((p=getPoint()).z==0)continue;
+        idleTime=millis()+180*1000; // three minutes
+        if(p.x>100&&p.x<200&&p.y<100){
+          if(!honker_running){
+            startHonkd();
+            tft.setCursor(105,30);
+            tft.setTextSize(2);
+            tft.setTextColor(WHITE);
+            //tft.print("OFF");
+          }else{
+            tft.fillRect(105,30,94,69,BLACK);
+            stopHonkd();
+          }
+          delay(500);
+        }else if(p.x<100&&p.y<100){
+          tft.fillScreen(WHITE);
+          int minutes = 2;
+          int seconds = 13;
+          long mil = 0;
+          println("Started bomb prank.");
+          while(true){
+            if(mil<millis()){
+              mil=millis()+1000;
+              seconds-=1;
+              if(seconds==-1){
+                seconds=59;
+                minutes--;
+                if(minutes<0){
+                  break;
+                }
+              }
+              tft.fillRect(100,100,256,50,WHITE);
+              tft.setCursor(100,100);
+              tft.setTextSize(3);
+              tft.setTextColor(RED);
+              tft.print(minutes);
+              tft.print(':');
+              tft.println(seconds);
+            }
+          }
+          tft.print("OOOOOOOOOOOOoooOOF");
+          delay(3000);
+          tft.fillScreen(BLACK);
+          tft.setCursor(100,100);
+          tft.setTextSize(3);
+          tft.setTextColor(RED);
+          tft.print("Get Pranxt.");
+          delay(5000);
+          tft.fillScreen(BLACK);            // rerender
+          tft.drawRect(0,0,100,100,WHITE);
+          tft.setCursor(25,25);
+          tft.setTextSize(2);
+          tft.setTextColor(BLUE);
+          tft.print("BOMB PRANK");
+          tft.drawRect(100,0,100,100,WHITE);
+          tft.setCursor(125,25);
+          tft.setTextSize(2);
+          tft.setTextColor(WHITE);
+          tft.print("AUTO HONK");
+          tft.drawRect(100,100,100,100,WHITE);
+          tft.setCursor(125,125);
+          tft.setTextSize(2);
+          tft.setTextColor(WHITE);
+          tft.print("BACK");
+          println("Done.");
+          break;
+        }else if(p.x>100&&p.y>100&&p.x<200&&p.y<200){
+          return;
+        }
+      }
     }
   }
   
@@ -301,30 +427,42 @@ void drawIcon(int x, int y, int id){
   }
 }
 TSPoint getPoint(){
-  TSPoint p = ts.getPoint();
-  if(p.x<TS_MINX||p.y<TS_MINY||p.x>TS_MAXX||p.y>TS_MAXY){
-    p.z=0;
-    return p;
-  } //*/
-  /*print(p.x);
-  print(" ");
-  print(p.y);
-  print(" ");
-  println(p.z);
-  delay(100);         //*/
-  int y=p.y;
-  p.x = tft.width()-map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
-  p.y = tft.height()-map(y, TS_MINY, TS_MAXY, 0, tft.height());
-  if(p.z==0)p.z=1;
-  if(p.x<0||p.y<0||p.x>tft.width()||p.y>tft.height())p.z=0;
-  else{
+  TSPoint p;
+  for(int i=0;i<100;i++){
+    p = ts.getPoint();
+    /*
+      Serial.print(p.x);
+      Serial.print(" ");
+      Serial.print(p.y);
+      Serial.print(" ");
+      Serial.println(p.z);
+      delay(100);         //*/
+    if(p.x<TS_MINX||p.y<TS_MINY||p.x>TS_MAXX||p.y>TS_MAXY){
+      continue;
+    } //*/
     /*print(p.x);
     print(" ");
     print(p.y);
     print(" ");
     println(p.z);
     delay(100);         //*/
+    int y=p.y;
+    p.x = tft.width()-map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
+    p.y = tft.height()-map(y, TS_MINY, TS_MAXY, 0, tft.height());
+    if(p.z==0)p.z=1;
+    if(p.x<0||p.y<0||p.x>tft.width()||p.y>tft.height())p.z=0;
+    else{
+      /*
+      Serial.print(p.x);
+      Serial.print(" ");
+      Serial.print(p.y);
+      Serial.print(" ");
+      Serial.println(p.z);
+      delay(100);         //*/
+    }
+    return p;
   }
+  p.z=0;
   return p;
 }
 
@@ -336,7 +474,7 @@ void mkTask(void (*taskFunc)(void*),char* name, TaskHandle_t* taskVar, int stack
    NULL,                   /* pvParameters */
    1,                      /* uxPriority */
    taskVar,                 /* pxCreatedTask */
-   0);                     /* xCoreID */
+   1);                     /* xCoreID */
 }
 
 int brightness = 100;
