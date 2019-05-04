@@ -29,18 +29,18 @@
 #define TFT_CS 21
 #define TFT_DC 4
 #define TFT_RST 14
-#define BRIGHTNESS_PIN 32
+#define BRIGHTNESS_PIN 13
 
 #define YP 33  // must be an analog pin, use "An" notation!
-#define XM 13  // must be an analog pin, use "An" notation!
+#define XM 32  // must be an analog pin, use "An" notation!
 #define YM 12   // can be a digital pin
 #define XP 27   // can be a digital pin
 
 // This is calibration data for the raw touch data to the screen coordinates
-#define TS_MINX -2400//-160//
-#define TS_MINY -1970//145//
-#define TS_MAXX 600//1024//
-#define TS_MAXY 770//1023//
+#define TS_MINX -2500//-160//
+#define TS_MINY -2885//145//
+#define TS_MAXX 255//1024//
+#define TS_MAXY 750//1023//
 
 Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, MOSI, SCK, TFT_RST, MISO);
 TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
@@ -59,7 +59,9 @@ void print(String s){
   Serial.print(s);
   logfile+=s;
 }
-
+/*uint64_t reg_a;
+uint64_t reg_b;
+uint64_t reg_c;*/
 void setup() {
   Serial.begin(115200);
   Serial1.begin(9600);
@@ -91,6 +93,12 @@ void setup() {
   analogSetSamples(65536);
   analogSetClockDiv(8);
   analogSetAttenuation(ADC_11db);
+
+  delay(5);
+
+  /*reg_a = READ_PERI_REG(SENS_SAR_START_FORCE_REG);
+  reg_b = READ_PERI_REG(SENS_SAR_READ_CTRL2_REG);
+  reg_c = READ_PERI_REG(SENS_SAR_MEAS_START2_REG);*/
   
   println("ADC Configured...");
 
@@ -158,8 +166,9 @@ void loop() {
   }
 
   while(true){
+    //sys_yield();
     
-    honker_daemon();
+    //honker_daemon();
     if(idleTime<millis()){
       ledcWrite(1, 0);
       while(true){
@@ -228,6 +237,7 @@ void loop() {
       int len = logfile.length();
       delay(200);
       while(true){
+        //sys_yield();
         if(logfile.length()>len){
           tft.fillScreen(BLACK);
           tft.setTextSize(1);
@@ -273,7 +283,7 @@ void loop() {
       tft.setTextColor(WHITE);
       tft.print("BACK");
       while(true){
-        honker_daemon();
+        //sys_yield();
         if(idleTime<millis()){
           ledcWrite(1, 0);
           while(true){
@@ -361,6 +371,15 @@ void loop() {
 
   // process a press (from main menu)
 }
+long reg_rw_timer = 0;
+void sys_yield(){
+  /*if(reg_rw_timer<millis()){
+    WRITE_PERI_REG(SENS_SAR_START_FORCE_REG, reg_a);  // fix ADC registers
+    WRITE_PERI_REG(SENS_SAR_READ_CTRL2_REG, reg_b);
+    WRITE_PERI_REG(SENS_SAR_MEAS_START2_REG, reg_c);
+    reg_rw_timer = millis()+10;
+  }*/
+}
 
 #define ICONSIZE 50
 void drawIcon(int x, int y, int id){
@@ -430,22 +449,15 @@ TSPoint getPoint(){
   TSPoint p;
   for(int i=0;i<100;i++){
     p = ts.getPoint();
-    /*
-      Serial.print(p.x);
+    /*Serial.print(p.x);
       Serial.print(" ");
       Serial.print(p.y);
       Serial.print(" ");
       Serial.println(p.z);
-      delay(100);         //*/
+      delay(100); //*/
     if(p.x<TS_MINX||p.y<TS_MINY||p.x>TS_MAXX||p.y>TS_MAXY){
       continue;
-    } //*/
-    /*print(p.x);
-    print(" ");
-    print(p.y);
-    print(" ");
-    println(p.z);
-    delay(100);         //*/
+    }
     int y=p.y;
     p.x = tft.width()-map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
     p.y = tft.height()-map(y, TS_MINY, TS_MAXY, 0, tft.height());
