@@ -277,6 +277,12 @@ void loop() {
       tft.setTextSize(2);
       tft.setTextColor(WHITE);
       tft.print("AUTO HONK");
+      if(honker_running){
+        tft.setCursor(105,30);
+        tft.setTextSize(2);
+        tft.setTextColor(WHITE);
+        tft.print("STOP");
+      }
       tft.drawRect(100,100,100,100,WHITE);
       tft.setCursor(125,125);
       tft.setTextSize(2);
@@ -303,7 +309,7 @@ void loop() {
             tft.setCursor(105,30);
             tft.setTextSize(2);
             tft.setTextColor(WHITE);
-            //tft.print("OFF");
+            tft.print("STOP");
           }else{
             tft.fillRect(105,30,94,69,BLACK);
             stopHonkd();

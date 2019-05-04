@@ -1,6 +1,7 @@
 #include "soc/soc.h"
 #include "soc/sens_reg.h"
 #include "WiFi.h"
+#include <HTTPClient.h>
 #include "esp_wifi.h"
 
 
@@ -54,38 +55,37 @@ int n_soundnames = 5;
 
 long honkd_timer = 0;
 
-void honker_daemon(){
-  /*while(honker_running&&honkd_timer<millis()){
-    if(WiFi.status() != WL_CONNECTED){
-      if(!connect_honker());//{
-        honkd_timer = millis()+30000;
-      //}
-    }else{
-      HTTPClient http;
-      http.begin(honkurl+soundnames[random(0,n_soundnames)]);
-      http.GET();
-      honkd_timer = millis()+random(20000,60000);
+void honker_daemon(void* args){
+  while(honker_running){
+    if(honkd_timer<millis()){
+      if(WiFi.status() != WL_CONNECTED){
+        println("honkd connecting...");
+        if(!connect_honker()){
+          honkd_timer = millis()+30000;
+          println("honkd failed to connect!");
+        }
+      }else{
+        println("honkd honking...");
+        HTTPClient http;
+        http.begin(honkurl+soundnames[random(0,n_soundnames)]);
+        http.GET();
+        honkd_timer = millis()+random(20000,60000);
+      }
     }
-  }*/
+    delay(10);
+  }
+  println("honkd exiting...");
+  honkd_timer = 0;
+  vTaskDelete(NULL);
 }
-
+TaskHandle_t honkd_taskvar;
 void startHonkd(){
-  println("Starting honkd...");
+  //println("Starting honkd...");
+  //connect_honker();
   println("Running honkd...");
-  connect_honker();
-  //WiFi.disconnect();
-  //WiFi.mode(WIFI_OFF);
-  
-  /*HTTPClient http;
-  http.begin(honkurl+soundnames[random(0,n_soundnames)]);
-  http.GET();
-  //WiFi.mode(WIFI_STA);
-  //WiFi.disconnect();
-  println("Honking done.");*/
-  
-  //honker_running=true;
+  mkTask(honker_daemon, "honkd", &honkd_taskvar, 8192);
+  honker_running=true;
 }
 void stopHonkd(){
-  println("honkd terminated.");
   honker_running = false;
 }
