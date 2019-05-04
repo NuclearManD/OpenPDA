@@ -72,7 +72,7 @@ void honker_daemon(void* args){
         honkd_timer = millis()+random(20000,60000);
       }
     }
-    delay(10);
+    delay(25);
   }
   println("honkd exiting...");
   honkd_timer = 0;

@@ -933,6 +933,8 @@ const unsigned short codes2_us[] PROGMEM={
 
 
 void delay_ten_us(uint16_t us) {
+  //uint32_t timer = us*10+micros();
+  //while(timer>micros());
   delayMicroseconds(us*10);
 }
 
@@ -949,30 +951,52 @@ void xmitCodeElement(uint16_t ontime, uint16_t offtime, uint8_t PWM_code)
 
 #define ir_region 1
 
-void tv_b_gone(){
-  const int *codes;
-  const unsigned short *codes2;
-  int sz=0;
-  int p=0;
-  if(ir_region==0) {
-    codes=codes_eu;
-    codes2=codes2_eu;
-    sz=sizeof(codes_eu)/sizeof(codes_eu[0])/3;
-  } else {
-    codes=codes_us;
-    codes2=codes2_us;
-    sz=sizeof(codes_us)/sizeof(codes_us[0])/3;
-  }
-  long time_limit = millis()+10000;
-  for(int i=0 ;i<sz && time_limit>millis();i++) {
-    const int *cc=codes+3*i;
-    int freq=pgm_read_dword(cc+0);
-    const unsigned short *code=codes2+pgm_read_dword(cc+2);
-    ledcSetup(5, freq, 13);
 
-    for (int k=0;k<pgm_read_dword(cc+1);k+=2)
-      xmitCodeElement(pgm_read_word(code+k), pgm_read_word(code+k+1), (freq!=0));  
+void println(String s);
+void print(String s);
+void mkTask(void (*taskFunc)(void*),char* name, TaskHandle_t* taskVar, int stack);
 
-    delay(50);
+boolean tvbgd_running = false;
+void tv_b_gone(void* ook){
+  while(tvbgd_running){
+    const int *codes;
+    const unsigned short *codes2;
+    int sz=0;
+    int p=0;
+    if(ir_region==0) {
+      codes=codes_eu;
+      codes2=codes2_eu;
+      sz=sizeof(codes_eu)/sizeof(codes_eu[0])/3;
+    } else {
+      codes=codes_us;
+      codes2=codes2_us;
+      sz=sizeof(codes_us)/sizeof(codes_us[0])/3;
+    }
+    long time_limit = millis()+1000;
+    for(int i=0 ;i<sz && time_limit>millis();i++) {
+      const int *cc=codes+3*i;
+      int freq=pgm_read_dword(cc+0);
+      const unsigned short *code=codes2+pgm_read_dword(cc+2);
+      ledcSetup(5, freq, 13);
+  
+      for (int k=0;k<pgm_read_dword(cc+1);k+=2)
+        xmitCodeElement(pgm_read_word(code+k), pgm_read_word(code+k+1), (freq!=0));  
+  
+      delay(50);
+    }
   }
+  println("tvbgd exiting...");
+  vTaskDelete(NULL);
+}
+
+TaskHandle_t tvbgd_taskvar;
+void start_tv_b_gone(){
+  //println("Starting honkd...");
+  //connect_honker();
+  println("Running tvbgd...");
+  tvbgd_running=true;
+  mkTask(tv_b_gone, "tvbgd", &tvbgd_taskvar, 2048);
+}
+void stop_tv_b_gone(){
+  tvbgd_running = false;
 }

@@ -137,7 +137,11 @@ boolean laser = false;
 void loop() {
   // draw OS stuff
   tft.fillScreen(BLACK);
-  drawIcon(25,25,4);
+  if(tvbgd_running){
+    drawIcon(25,25,104);
+  }else{
+    drawIcon(25,25,4);
+  }
   tft.drawRect(0,0,100,100,WHITE);
   tft.setCursor(125,25);
   tft.setTextSize(2);
@@ -197,18 +201,14 @@ void loop() {
     if((p=getPoint()).z==0)continue;
     idleTime=millis()+180*1000; // three minutes
     if(p.x<100&&p.y<100){
-      tft.fillRect(100,100,120,60, BLUE);
-      tft.setCursor(110,110);
-      tft.setTextSize(1);
-      tft.setTextColor(WHITE);
-      tft.print("Running...");
-      println("Running TV-B-Gone...");
-      long timer = millis();
-      tv_b_gone();
-      print("Finished in ");
-      print(String(millis()-timer));
-      println("ms");
-      return;
+      if(tvbgd_running){
+        drawIcon(25,25,4);
+        stop_tv_b_gone();
+      }else{
+        drawIcon(25,25,104);
+        start_tv_b_gone();
+      }
+      delay(100);
     }else if(p.x>100&&p.x<200&&p.y<100){
       laser = !laser;
       digitalWrite(LASER_PIN, laser);
@@ -424,6 +424,12 @@ void drawIcon(int x, int y, int id){
     tft.drawLine(x+7,y+12,x+42,y+32,RED);
     tft.drawLine(x+42,y+12,x+7,y+32,RED);
     tft.drawRect(x+8,y+36,34,2,GREY2);
+  }else if(id==104){  // tv icon
+    tft.fillRect(x+5,y+10,40,25,BLACK);
+    tft.drawRect(x+5,y+10,40,25,GREY1);
+    tft.drawLine(x+10,y+10,x+4,y+4,GREY2);
+    tft.drawLine(x+40,y+10,x+46,y+4,GREY2);
+    tft.drawRect(x+8,y+36,34,2,GREY2);
   }else if(id==5){  // scaa logo (POSITION INDEPENDEDNT!)
     int w = tft.width();
     int h = tft.height();
@@ -492,7 +498,7 @@ void mkTask(void (*taskFunc)(void*),char* name, TaskHandle_t* taskVar, int stack
    NULL,                   /* pvParameters */
    1,                      /* uxPriority */
    taskVar,                 /* pxCreatedTask */
-   1);                     /* xCoreID */
+   1-xPortGetCoreID());                     /* xCoreID */
 }
 
 int brightness = 100;
