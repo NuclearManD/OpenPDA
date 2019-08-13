@@ -1,2 +1,4 @@
 kicad/ESP32-footprints-Shem-Lib.lib
 kicad/ESP32-footprints-Lib.pretty/
+*.skp
+*.stl
