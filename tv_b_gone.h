@@ -6,6 +6,7 @@
 #define COMMAND_ALL_OFF_10S 10
 
 #define COMMAND_LG_OFF_W3S 100
+#define COMMAND_LG_OFF_W1S 101
 
 
 #define REGION_EU 0
@@ -1015,6 +1016,9 @@ void tv_b_gone(void* ook){
     }else if(tvbgd_command==COMMAND_LG_OFF_W3S){
       tvbg_sequences(codes, codes2, lg_us_codes, sizeof(lg_us_codes)/sizeof(int));
       delay(3000);
+    }else if(tvbgd_command==COMMAND_LG_OFF_W1S){
+      tvbg_sequences(codes, codes2, lg_us_codes, sizeof(lg_us_codes)/sizeof(int));
+      delay(1000);
     }
   }
   println("tvbgd exiting...");
@@ -1023,8 +1027,6 @@ void tv_b_gone(void* ook){
 
 TaskHandle_t tvbgd_taskvar;
 void start_tv_b_gone(){
-  //println("Starting honkd...");
-  //connect_honker();
   println("Running tvbgd...");
   tvbgd_running=true;
   mkTask(tv_b_gone, "tvbgd", &tvbgd_taskvar, 2048);

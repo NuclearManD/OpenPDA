@@ -1,5 +1,3 @@
-#include <MicroNMEA.h>
-
 #include <TouchScreen.h>
 #include <SPI.h>
 #include "Adafruit_GFX.h"
@@ -8,46 +6,21 @@
 #define LEDC_CHANNEL_0 0
 #define LEDC_CHANNEL_1 1
 
+#define PERIPH_PIR 1
+#define PERIPH_HONKER 2
+
 #define LASER_PIN 22
+#define BUTTON_PIN 34
+void println(String s);
+void print(String s);
 
+#include "lcd_control.h"
 #include "tv_b_gone.h"
-#include "honker_control.h"
-
-#define BLACK    0x0000
-#define BLUE     0x001F
-#define RED      0xF800
-#define GREEN    0x07E0
-#define CYAN     0x07FF
-#define MAGENTA  0xF81F
-#define YELLOW   0xFFE0
-#define WHITE    0xFFFF
-#define GREY1    0xAD55
-#define GREY2    0x52AA
-#define GREY3    0xDF5D
-
-// These are 'flexible' lines that can be changed
-#define TFT_CS 21
-#define TFT_DC 4
-#define TFT_RST 14
-#define BRIGHTNESS_PIN 13
-
-#define YP 33  // must be an analog pin, use "An" notation!
-#define XM 32  // must be an analog pin, use "An" notation!
-#define YM 12   // can be a digital pin
-#define XP 27   // can be a digital pin
-
-// This is calibration data for the raw touch data to the screen coordinates
-#define TS_MINX -2500//-160//
-#define TS_MINY -2885//145//
-#define TS_MAXX 255//1024//
-#define TS_MAXY 750//1023//
-
-Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, MOSI, SCK, TFT_RST, MISO);
-TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
-
-long idleTime;
-char nmeaBuffer[100];
-MicroNMEA gps(nmeaBuffer, sizeof(nmeaBuffer));
+#include "neonet.h"
+#include "neonet_pgm.h"
+#include "musicd.h"
+#include "wifid.h"
+#include "jpeg.h"
 
 String logfile = "";
 
@@ -59,9 +32,7 @@ void print(String s){
   Serial.print(s);
   logfile+=s;
 }
-/*uint64_t reg_a;
-uint64_t reg_b;
-uint64_t reg_c;*/
+
 void setup() {
   Serial.begin(115200);
   Serial1.begin(9600);
@@ -76,15 +47,16 @@ void setup() {
 
   pinMode(IRLED, OUTPUT);
   pinMode(LASER_PIN, OUTPUT);
+  
+  pinMode(BUTTON_PIN, INPUT);
 
   SPI.setFrequency(8000000);
-  
-  ledcSetup(1, 40000, 8);
-  ledcAttachPin(BRIGHTNESS_PIN, 1);
+
+  lcd_setup();
   
   ledcSetup(5, 80, 13);
   ledcAttachPin(IRLED, 5);
-  
+    
   println("LEDC Configured...");
   
   setBrightness(30);
@@ -93,12 +65,6 @@ void setup() {
   analogSetSamples(65536);
   analogSetClockDiv(8);
   analogSetAttenuation(ADC_11db);
-
-  delay(5);
-
-  /*reg_a = READ_PERI_REG(SENS_SAR_START_FORCE_REG);
-  reg_b = READ_PERI_REG(SENS_SAR_READ_CTRL2_REG);
-  reg_c = READ_PERI_REG(SENS_SAR_MEAS_START2_REG);*/
   
   println("ADC Configured...");
 
@@ -112,18 +78,9 @@ void doLogin(){
   drawIcon(0,0,5);
   // login
   while(true){
-    if(idleTime<millis()){
-      ledcWrite(1, 0);
-      while(true){
-        delay(20);
-        if(getPoint().z!=0)break;
-      }
-      setBrightness(getBrightness());
-      delay(100);
-      idleTime=millis()+180*1000; // three minutes
-    }
-    TSPoint p;
-    if((p=getPoint()).z==0)continue;
+    screenIdleHandler();
+    TSPoint p=getPoint();
+    if(p.z==0)continue;
     idleTime=millis()+180*1000; // three minutes
     if(p.x<30&&p.y<30){
       break;
@@ -178,34 +135,16 @@ void loop() {
     tft.drawTriangle(220,10,228, 22, 212, 22, RED);
   }
 
+  // music icon
+  drawIcon(25,325,8);
+  tft.drawRect(0,300,100,100,WHITE);
+
+  // wifi icon
+  drawIcon(125,325,1);
+  tft.drawRect(100,300,100,100,WHITE);
+
   while(true){
-    //sys_yield();
-    
-    //honker_daemon();
-    if(idleTime<millis()){
-      ledcWrite(1, 0);
-      while(true){
-        delay(20);
-        if(getPoint().z!=0)break;
-      }
-      setBrightness(getBrightness());
-      delay(100);
-      idleTime=millis()+180*1000; // three minutes
-    }
-    while (Serial1.available()) {
-      char c = Serial1.read();
-      gps.process(c);
-      Serial.write(c);
-    }
-    if(gps.getHour()!=99){
-      tft.fillRect(225,50,64,20, BLACK);
-      tft.setCursor(225,50);
-      tft.setTextSize(1);
-      tft.setTextColor(WHITE);
-      tft.print(gps.getHour());
-      tft.print(':');
-      tft.print(gps.getMinute());
-    }
+    screenIdleHandler();
     TSPoint p;
     if((p=getPoint()).z==0)continue;
     idleTime=millis()+180*1000; // three minutes
@@ -255,16 +194,7 @@ void loop() {
           tft.print(logfile);
           len = logfile.length();
         }
-        if(idleTime<millis()){
-          ledcWrite(1, 0);
-          while(true){
-            delay(20);
-            if(getPoint().z!=0)break;
-          }
-          setBrightness(getBrightness());
-          delay(100);
-          idleTime=millis()+180*1000; // three minutes
-        }
+        screenIdleHandler();
         TSPoint p;
         if((p=getPoint()).z==0)continue;
         idleTime=millis()+180*1000; // three minutes
@@ -273,16 +203,23 @@ void loop() {
       return;
     }else if(p.x<100&&p.y>200&&p.y<300){
       dtUtilProgram();
+      return;
+    }else if(p.x>100&&p.x<200&&p.y>200&&p.y<300){
+      settingsProgram();
+      return;
+    }else if(p.x<100&&p.y>300&&p.y<400){
+      musicProgram();
+      return;
+    }else if(p.x>100&&p.x<200&&p.y>300&&p.y<400){
+      wifiProgram();
+      return;
     }
   }
   
 
   // process a press (from main menu)
 }
-
-void dtUtilProgram(){
-  // do a login
-  doLogin();
+void dtUtilBaseRender(){
   // open prank toolkit
   tft.fillScreen(BLACK);
   tft.drawRect(0,0,100,100,WHITE);
@@ -290,7 +227,7 @@ void dtUtilProgram(){
   tft.setTextSize(2);
   tft.setTextColor(BLUE);
   tft.print(" BOMB\n PRANK");
-  tft.drawRect(100,0,100,100,WHITE);
+  /*tft.drawRect(100,0,100,100,WHITE);
   tft.setCursor(105,5);
   tft.setTextSize(2);
   tft.setTextColor(WHITE);
@@ -300,28 +237,23 @@ void dtUtilProgram(){
     tft.setTextSize(2);
     tft.setTextColor(WHITE);
     tft.print("STOP");
-  }
+  }*/
   tft.drawRect(100,100,100,100,WHITE);
   tft.setCursor(125,125);
   tft.setTextSize(2);
   tft.setTextColor(WHITE);
   tft.print("BACK");
+}
+void dtUtilProgram(){
+  // do a login
+  doLogin();
+  dtUtilBaseRender();
   while(true){
-    //sys_yield();
-    if(idleTime<millis()){
-      ledcWrite(1, 0);
-      while(true){
-        delay(20);
-        if(getPoint().z!=0)break;
-      }
-      setBrightness(getBrightness());
-      delay(100);
-      idleTime=millis()+180*1000; // three minutes
-    }
+    screenIdleHandler();
     TSPoint p;
     if((p=getPoint()).z==0)continue;
     idleTime=millis()+180*1000; // three minutes
-    if(p.x>100&&p.x<200&&p.y<100){
+    /*if(p.x>100&&p.x<200&&p.y<100){
       if(!honker_running){
         startHonkd();
         tft.setCursor(105,30);
@@ -333,7 +265,7 @@ void dtUtilProgram(){
         stopHonkd();
       }
       delay(500);
-    }else if(p.x<100&&p.y<100){
+    }else */if(p.x<100&&p.y<100){
       tft.fillScreen(WHITE);
       int minutes = 2;
       int seconds = 13;
@@ -367,27 +299,347 @@ void dtUtilProgram(){
       tft.setTextColor(RED);
       tft.print("Get Pranxt.");
       delay(5000);
-      tft.fillScreen(BLACK);            // rerender
-      tft.drawRect(0,0,100,100,WHITE);
-      tft.setCursor(25,25);
-      tft.setTextSize(2);
-      tft.setTextColor(BLUE);
-      tft.print("BOMB PRANK");
-      tft.drawRect(100,0,100,100,WHITE);
-      tft.setCursor(125,25);
-      tft.setTextSize(2);
-      tft.setTextColor(WHITE);
-      tft.print("AUTO HONK");
-      tft.drawRect(100,100,100,100,WHITE);
-      tft.setCursor(125,125);
-      tft.setTextSize(2);
-      tft.setTextColor(WHITE);
-      tft.print("BACK");
+      dtUtilBaseRender();
       println("Done.");
       break;
     }else if(p.x>100&&p.y>100&&p.x<200&&p.y<200){
       return;
     }
+  }
+}
+
+
+void musicBaseRender(){
+  // open prank toolkit
+
+  uint16_t color = MAGENTA;
+  if(musicd_running)color = GREY1;
+
+  tft.fillScreen(BLACK);
+  tft.drawRect(0,0,100,100,WHITE);
+  tft.setCursor(0,2);
+  tft.setTextSize(2);
+  tft.setTextColor(color);
+  tft.print(" Mario");
+  
+  tft.drawRect(100,0,100,100,WHITE);
+  tft.setCursor(105,5);
+  tft.setTextSize(2);
+  tft.setTextColor(color);
+  tft.print("Mario (simple)");
+  
+  tft.drawRect(100,100,100,100,WHITE);
+  tft.setCursor(125,125);
+  tft.setTextSize(2);
+  tft.setTextColor(WHITE);
+  tft.print("BACK");
+}
+void musicProgram(){
+  musicBaseRender();
+  while(true){
+    screenIdleHandler();
+    TSPoint p;
+    if((p=getPoint()).z==0)continue;
+    idleTime=millis()+180*1000; // three minutes
+    if(p.x>100&&p.x<200&&p.y<100){
+      if(!musicd_running){
+        start_music_daemon(1);
+        continue;
+      }
+    }else if(p.x<100&&p.y<100){
+      if(!musicd_running){
+        start_music_daemon(0);
+        continue;
+      }
+    }else if(p.x>100&&p.y>100&&p.x<200&&p.y<200){
+      return;
+    }
+    musicBaseRender();
+  }
+}
+void wifiBaseRender(){
+  // open wifi control panel
+
+  tft.fillScreen(BLACK);
+  tft.drawRect(0,0,100,100,WHITE);
+  tft.setCursor(0,2);
+  tft.setTextSize(2);
+  tft.setTextColor(((wifid_mode==MODE_OFF)||(wifid_mode==MODE_SCAN)) ? BLUE : GREY1);
+  tft.print(" Scan");
+  
+  tft.drawRect(100,0,100,100,WHITE);
+  tft.setCursor(105,5);
+  tft.setTextSize(2);
+  tft.setTextColor(enable_thanos ? RED : GREY1);
+  tft.print("Thanos");
+  if(enable_thanos){
+    tft.setCursor(105,35);
+    tft.print("[runnning]");
+  }
+  
+  tft.drawRect(100,100,100,100,WHITE);
+  tft.setCursor(125,125);
+  tft.setTextSize(2);
+  tft.setTextColor(WHITE);
+  tft.print("BACK");
+
+  if(wifid_mode!=MODE_OFF){
+    tft.drawRect(0,100,100,100,WHITE);
+    tft.setCursor(5,105);
+    tft.setTextSize(2);
+    tft.setTextColor(RED);
+    tft.print("Disable");
+  }else{
+    tft.drawRect(0,100,100,100,WHITE);
+    tft.setCursor(5,105);
+    tft.setTextSize(2);
+    tft.setTextColor(WHITE);
+    tft.print("NeoNet");
+  }
+  
+  tft.drawRect(0,200,100,100,WHITE);
+  drawIcon(25,225,9);
+
+  tft.setCursor(10,300);
+  tft.print("WiFi Status: ");
+  if(wifid_mode==MODE_OFF)tft.print("OFF");
+  else if(wifid_mode==MODE_STA)tft.print("Connected");
+  else if(wifid_mode==MODE_AP){
+    tft.print("Access Point");
+    if(enable_thanos)tft.print(" (thanos)");
+  }else if(wifid_mode==MODE_SCAN){
+    tft.print("Scanning");
+  }
+}
+void wifiProgram(){
+  wifiBaseRender();
+  while(true){
+    screenIdleHandler();
+    TSPoint p;
+    if((p=getPoint()).z==0)continue;
+    idleTime=millis()+180*1000; // three minutes
+    if(p.x>100&&p.x<200&&p.y<100){
+      if(enable_thanos)stop_thanos();
+      else start_thanos();
+    }else if(p.x<100&&p.y<100){
+      if(wifid_mode==MODE_OFF)enable_wifi();
+      if(wifid_mode==MODE_SCAN){
+        long timer = millis()+10000;
+        tft.fillScreen(BLACK);
+        tft.setTextColor(WHITE);
+        tft.setTextSize(1);
+        tft.setCursor(0,0);
+        tft.println("Scanning...");
+        while((timer>millis())&&(netscan_len==0));
+        tft.println(String("Found ")+netscan_len+" networks:");
+        Serial.println(netscan_len);
+        for(int i=0;i<netscan_len;i++){
+          tft.print(WiFi.SSID(i));
+          if(WiFi.encryptionType(i) != WIFI_AUTH_OPEN)
+            tft.print(" *");
+          tft.println();
+        }
+        while(true){
+          screenIdleHandler();
+          if(getPoint().z==0)continue;
+          idleTime=millis()+180*1000; // three minutes
+          break;
+        }
+      }
+    }else if(p.x>100&&p.y>100&&p.x<200&&p.y<200){
+      return;
+    }else if(p.y>100&&p.x<100&&p.y<200){
+      if(wifid_mode!=MODE_OFF)disable_wifi();
+      else{
+        if(wifi_connect("nti", "littleguys")){
+          display("Connecting to WiFi...");
+          // Wait for connect
+          long timer = millis()+10000;
+          while((WiFi.status() != WL_CONNECTED)&&(timer>millis())){
+            delay(20);
+          }
+          if(WiFi.status() != WL_CONNECTED){
+            disable_wifi();
+            println("Connection failure.");
+            popup("Connection error");
+          }else{
+            display("Connecting to NeoNet...");
+            // now connect to NeoNet
+            if(NeoNetSetup()){
+              println("Connected to NeoNet.");
+              ping(); // keep connection, this also responds to any ping from the remote.
+              //popup("NeoNet connection will close when this program is closed.");
+              uint64_t adr_targ = ask_neonet_adr();
+              display("Discovering protocols...");
+
+              /* Enumerate protocols
+               *
+               * Process is parallelized so that packets are sent on all protocols, then we listen for responses.
+               */
+              // Test Plasma
+              sendNrlPacket(adr_targ, (byte*)"ls", 2, PORT_PLASMA_SICO);
+
+              // Test Logread
+              byte cmdrd[1] = {CMD_READ_LOG};
+              sendNrlPacket(adr_targ, (byte*)cmdrd, 1, PORT_LOGREAD);
+
+              // Test GPS
+              sendNrlPacket(adr_targ, (byte*)"", 0, PORT_GPS);
+
+              // Timeout setting at 8 seconds
+              long timer = millis() + 8000;
+
+              String gps_data = "";
+              String log_data = "";
+              int periphs = 0;
+              String periph_txts = "";
+              int loglen = -1;
+              while(timer>millis()){
+                int len = getNrlPacket(timer-millis());
+                if(len>=0){
+                  Serial.println(len);
+                  Serial.println(nrl_port);
+                  Serial.println((char*)nrl_data);
+  
+                  if(nrl_target==nrl_adr){
+                    if(nrl_port == PORT_PLASMA_SOCI){
+                      int i=0;
+                      String text = "";
+                      boolean cmd = false;
+                      for(;i<len;i++){
+                        if(nrl_data[i]==0){
+                          if(cmd){
+                            if(text=="honker")
+                              periphs|=PERIPH_HONKER;
+                            else if(text=="PIR")
+                              periphs|=PERIPH_PIR;
+                            periph_txts+=text;
+                            if(i+1<len){
+                              periph_txts+=", ";
+                            }
+                          }else{
+                            if(text!="ok")break;
+                            cmd = true;
+                          }
+                          text = "";
+                        }else
+                          text+=(char)nrl_data[i];
+                      }
+                    }else if(nrl_port == PORT_LOGREAD){
+                      if(loglen==-1)loglen=0;
+                      else log_data+=(char*)nrl_data;
+                    }else if(nrl_port == PORT_GPS){
+                      gps_data=(char*)nrl_data;
+                    }
+                  }
+                }
+              }
+              neonet_ctrl_pgm(gps_data, log_data, adr_targ, periphs);
+
+              // turn NeoNet off when done.
+              neonet_socket.stop();
+              delay(10);
+            }else{
+              popup("Could not connect to NeoNet.");
+            }
+          }
+        }else{
+          popup("Error with wifid: check logs.");
+        }
+      }
+    }else if(p.y>200&&p.x<100&&p.y<300){
+      if(wifi_connect("OpenPDA Camera","")){
+        long timer = millis()+10000;
+        display("Connecting to camera...");
+        while((WiFi.status() != WL_CONNECTED)&&(timer>millis())){
+          delay(20);
+        }
+        if(WiFi.status() != WL_CONNECTED){
+          disable_wifi();
+          println("Connection failure.");
+          popup("Connection error");
+        }else{
+          println("Connected.");
+          while(true){
+            take_pic_subprogram();
+          }
+        }
+      }else{
+        popup("Error with wifid: check logs.");
+      }
+    }
+    wifiBaseRender();
+  }
+}
+
+void settingsBaseRender(){
+  tft.fillScreen(BLACK);
+  
+  tft.drawRect(0,0,100,100,WHITE);      // icon for 5s tvbg period
+  tft.setCursor(0,2);
+  tft.setTextSize(1);
+  if(tvbgd_command==COMMAND_ALL_OFF_5S)
+    tft.setTextColor(BLUE);
+  else
+    tft.setTextColor(WHITE);
+  tft.print("5s tvbg period");
+  
+  tft.drawRect(100,0,100,100,WHITE);      // icon for 10s tvbg period
+  tft.setCursor(105,5);
+  if(tvbgd_command==COMMAND_ALL_OFF_10S)
+    tft.setTextColor(BLUE);
+  else
+    tft.setTextColor(WHITE);
+  tft.print("10s tvbg period");
+  
+  tft.drawRect(0,100,100,100,WHITE);      // icon for tvbg lg only, 3s
+  tft.setCursor(5,105);
+  if(tvbgd_command==COMMAND_LG_OFF_W3S)
+    tft.setTextColor(BLUE);
+  else
+    tft.setTextColor(WHITE);
+  tft.print("3s LG period");
+  
+  tft.drawRect(100,100,100,100,WHITE);      // icon for tvbg lg only, 1s
+  tft.setCursor(105,105);
+  if(tvbgd_command==COMMAND_LG_OFF_W1S)
+    tft.setTextColor(BLUE);
+  else
+    tft.setTextColor(WHITE);
+  tft.print("1s LG period");
+  
+  tft.drawRect(100,300,100,100,WHITE);
+  tft.setCursor(125,325);
+  tft.setTextSize(2);
+  tft.setTextColor(WHITE);
+  tft.print("BACK");
+}
+
+void settingsProgram(){
+  // open settings
+  settingsBaseRender();
+  while(true){
+    screenIdleHandler();
+    TSPoint p;
+    if((p=getPoint()).z==0)continue;
+    idleTime=millis()+180*1000; // three minutes
+    if(p.x>100&&p.x<200&&p.y<100){
+      tvbgd_command=COMMAND_ALL_OFF_10S;
+    }else if(p.x<100&&p.y<100){
+      tvbgd_command=COMMAND_ALL_OFF_5S;
+    }else if(p.x<100&&p.y>100&&p.y<200){
+      tvbgd_command=COMMAND_LG_OFF_W3S;
+    }else if(p.x>100&&p.x<200&&p.y>100&&p.y<200){
+      tvbgd_command=COMMAND_LG_OFF_W1S;
+    }else if(p.x>100&&p.y>300&&p.x<200&&p.y<400){
+      return;
+    }else{
+      Serial.print(p.x);
+      Serial.print(", ");
+      Serial.println(p.y);
+      continue;
+    }
+    settingsBaseRender();
   }
 }
 
@@ -401,109 +653,6 @@ void sys_yield(){
   }*/
 }
 
-#define ICONSIZE 50
-void drawIcon(int x, int y, int id){
-  if(id==0){ // hard disk icon
-    tft.drawRect(x,y+5,50,40,CYAN);
-    tft.fillCircle(x+19,y+24, 18, GREY1);
-    tft.fillCircle(x+19,y+24, 3, GREY2);
-    tft.fillTriangle(x+23, y+29, x+48, y+42, x+48, y+38, GREY2);
-  }else if(id==1){ // wireless/network icon 1
-    for(int i=3;i>0;i--){
-      tft.drawCircle(x+25, y+10, i*2+2, RED);
-    }
-    tft.fillRect(x+10, y+10, 40, 25, 0);
-    tft.fillCircle(x+25, y+10, 2, RED);
-    
-    tft.drawLine(x+25, y+10, x+25, y+50, RED);
-    tft.drawLine(x, y+50, x+50, y+50, RED);
-  }else if(id==2){ // floppy disk icon
-    tft.fillRect(x,y+10,45,40, GREY2);
-    tft.fillRect(x+10,y,35,50, GREY2);
-    tft.fillTriangle(x, y+10, x+10, y, x+10, y+10, GREY2);
-    tft.fillRect(x+15,y,10,10,GREY1);
-    tft.drawRect(x+25,y,7,10,GREY1);
-    tft.fillRect(x+32,y,3,10,GREY1);
-    tft.fillRect(x+12,y+25,26,25, GREY3);
-  }else if(id==3){  // gear/settings icon
-    tft.fillCircle(x+25,y+25,20,GREY1);
-    tft.fillRect(x+20,y,10,50,GREY1);
-    tft.fillRect(x,y+20,50,10,GREY1);
-    tft.fillCircle(x+25,y+25,4,GREY2);
-  }else if(id==4){  // tv-b-gone
-    tft.fillRect(x+5,y+10,40,25,BLACK);
-    tft.drawRect(x+5,y+10,40,25,GREY1);
-    tft.drawLine(x+10,y+10,x+4,y+4,GREY2);
-    tft.drawLine(x+40,y+10,x+46,y+4,GREY2);
-    tft.drawLine(x+7,y+12,x+42,y+32,RED);
-    tft.drawLine(x+42,y+12,x+7,y+32,RED);
-    tft.drawRect(x+8,y+36,34,2,GREY2);
-  }else if(id==104){  // tv icon
-    tft.fillRect(x+5,y+10,40,25,BLACK);
-    tft.drawRect(x+5,y+10,40,25,GREY1);
-    tft.drawLine(x+10,y+10,x+4,y+4,GREY2);
-    tft.drawLine(x+40,y+10,x+46,y+4,GREY2);
-    tft.drawRect(x+8,y+36,34,2,GREY2);
-  }else if(id==5){  // scaa logo (POSITION INDEPENDEDNT!)
-    int w = tft.width();
-    int h = tft.height();
-    tft.fillCircle(w/2,h/2,w/5, GREY1);
-    tft.drawCircle(w/2,h/2,w/5, RED);
-    tft.setTextSize(3);
-    tft.setCursor(w/2 - 40,h/2 - 10);
-    tft.setTextColor(BLUE);
-    tft.print("SCAA");
-  }else if(id==6){  // scaa logo (POSITION DEPENDEDNT!)
-    int q = ICONSIZE/2;
-    tft.fillCircle(x+q,y+q,q, GREY1);
-    tft.drawCircle(x+q,y+q,q, RED);
-    tft.setTextSize(1);
-    tft.setCursor(x+q - 20,y+q - 5);
-    tft.setTextColor(BLUE);
-    tft.print("SCAA");
-  }else if(id==7){  // logfile
-    int q = ICONSIZE/2;
-    tft.fillRect(x+5,y+5,40,40,BLACK);
-    tft.drawRect(x+5,y+5,40,40,GREY2);
-    tft.setCursor(x+7,y+7);
-    tft.setTextSize(1);
-    tft.setTextColor(GREEN);
-    tft.print("> LOG");
-  }
-}
-TSPoint getPoint(){
-  TSPoint p;
-  for(int i=0;i<100;i++){
-    p = ts.getPoint();
-    /*Serial.print(p.x);
-      Serial.print(" ");
-      Serial.print(p.y);
-      Serial.print(" ");
-      Serial.println(p.z);
-      delay(100); //*/
-    if(p.x<TS_MINX||p.y<TS_MINY||p.x>TS_MAXX||p.y>TS_MAXY){
-      continue;
-    }
-    int y=p.y;
-    p.x = tft.width()-map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
-    p.y = tft.height()-map(y, TS_MINY, TS_MAXY, 0, tft.height());
-    if(p.z==0)p.z=1;
-    if(p.x<0||p.y<0||p.x>tft.width()||p.y>tft.height())p.z=0;
-    else{
-      /*
-      Serial.print(p.x);
-      Serial.print(" ");
-      Serial.print(p.y);
-      Serial.print(" ");
-      Serial.println(p.z);
-      delay(100);         //*/
-    }
-    return p;
-  }
-  p.z=0;
-  return p;
-}
-
 void mkTask(void (*taskFunc)(void*),char* name, TaskHandle_t* taskVar, int stack){
   xTaskCreatePinnedToCore(
    taskFunc,                  /* pvTaskCode */
@@ -513,14 +662,4 @@ void mkTask(void (*taskFunc)(void*),char* name, TaskHandle_t* taskVar, int stack
    1,                      /* uxPriority */
    taskVar,                 /* pxCreatedTask */
    1-xPortGetCoreID());                     /* xCoreID */
-}
-
-int brightness = 100;
-
-int getBrightness(){
-  return brightness-35;
-}
-void setBrightness(int b){
-  brightness=b+35;
-  ledcWrite(1, (brightness*256)/100);
 }
